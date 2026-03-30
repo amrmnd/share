@@ -1,0 +1,117 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-export-job
+  namespace: keycloak
+spec:
+  template:
+    spec:
+      containers:
+      - name: keycloak
+        image: quay.io/keycloak/keycloak:26.5.3
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            /opt/keycloak/bin/kc.sh export \
+            --dir /opt/keycloak/export \
+            --users different_files \
+            --users-per-file 100
+        env:
+          - name: KC_DB
+            value: "postgres"
+          - name: KC_DB_URL_HOST
+            value: "cluster-example-rw.keycloak.svc.cluster.local"
+          - name: KC_DB_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: keycloak-db-secret
+                key: username
+          - name: KC_DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: keycloak-db-secret
+                key: password
+        volumeMounts:
+          - name: export-storage
+            mountPath: /opt/keycloak/export
+      restartPolicy: OnFailure
+      volumes:
+        - name: export-storage
+          persistentVolumeClaim:
+            claimName: keycloak-export-pvc
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: keycloak-export-pvc
+  namespace: keycloak
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+apiVersion: v1
+
+---
+kind: Pod
+metadata:
+  name: keycloak-export-viewer
+  namespace: keycloak
+spec:
+  containers:
+  - name: viewer
+    image: alpine:latest
+    command: ["/bin/sh", "-c", "sleep infinity"]
+    volumeMounts:
+    - name: export-data
+      mountPath: /data
+  volumes:
+  - name: export-data
+    persistentVolumeClaim:
+      claimName: keycloak-export-pvc
+
+---      
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: keycloak-import-job
+  namespace: keycloak
+spec:
+  template:
+    spec:
+      containers:
+      - name: keycloak
+        image: quay.io/keycloak/keycloak:26.5.3
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            /opt/keycloak/bin/kc.sh import \
+            --dir /opt/keycloak/import \
+            --override true
+        env:
+          - name: KC_DB
+            value: "postgres"
+          - name: KC_DB_URL_HOST
+            value: "cluster-example-rw.keycloak.svc.cluster.local"
+          - name: KC_DB_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: keycloak-db-secret
+                key: username
+          - name: KC_DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: keycloak-db-secret
+                key: password
+        volumeMounts:
+          - name: import-storage
+            mountPath: /opt/keycloak/import
+      restartPolicy: OnFailure
+      volumes:
+        - name: import-storage
+          persistentVolumeClaim:
+            claimName: keycloak-export-pvc
+  backoffLimit: 2
