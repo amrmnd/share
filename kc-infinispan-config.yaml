@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kc-infinispan-config
+  labels:
+    app: infinispan
+data:
+  infinispan-config.xml: |
+    <infinispan>
+        <cache-container name="keycloak">
+            <transport lock-timeout="60000"/>
+            <distributed-cache name="sessions" owners="1">
+                <encoding>
+                    <key media-type="application/x-protostream"/>
+                    <value media-type="application/x-protostream"/>
+                </encoding>
+                <expiration lifespan="-1"/>
+                <memory max-count="10000"/>
+            </distributed-cache>
+            <distributed-cache name="authenticationSessions" owners="2">
+                <encoding>
+                    <key media-type="application/x-protostream"/>
+                    <value media-type="application/x-protostream"/>
+                </encoding>
+                <indexing enabled="false"/>
+                <expiration lifespan="-1"/>
+            </distributed-cache>
+            <distributed-cache name="offlineSessions" owners="1">
+                <encoding>
+                    <key media-type="application/x-protostream"/>
+                    <value media-type="application/x-protostream"/>
+                </encoding>
+                <expiration lifespan="-1"/>
+                <memory max-count="10000"/>
+            </distributed-cache>
+            <distributed-cache name="clientSessions" owners="1">
+                <encoding>
+                    <key media-type="application/x-protostream"/>
+                    <value media-type="application/x-protostream"/>
+                </encoding>
+                <expiration lifespan="-1"/>
+                <memory max-count="10000"/>
+            </distributed-cache>
+            <distributed-cache name="offlineClientSessions" owners="1">
+                <encoding>
+                    <key media-type="application/x-protostream"/>
+                    <value media-type="application/x-protostream"/>
+                </encoding>
+                <expiration lifespan="-1"/>
+                <memory max-count="10000"/>
+            </distributed-cache>
+            <distributed-cache name="loginFailures" owners="2">
+                <encoding>
+                    <key media-type="application/x-protostream"/>
+                    <value media-type="application/x-protostream"/>
+                </encoding>
+                <indexing enabled="false"/>
+                <expiration lifespan="-1"/>
+            </distributed-cache>
+            <distributed-cache name="actionTokens" owners="2">
+                <encoding>
+                    <key media-type="application/x-protostream"/>
+                    <value media-type="application/x-protostream"/>
+                </encoding>
+                <expiration max-idle="-1" lifespan="-1" interval="300000"/>
+                <memory max-count="-1"/>
+            </distributed-cache>
+            <replicated-cache name="work">
+                <expiration lifespan="-1"/>
+            </replicated-cache>
+        </cache-container>
+    </infinispan>
