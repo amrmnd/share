@@ -15,14 +15,13 @@ data:
                     <value media-type="application/x-protostream"/>
                 </encoding>
                 <expiration lifespan="-1"/>
-                <memory max-count="10000"/>
+                <memory max-count="10000" when-full="REMOVE"/>
             </distributed-cache>
             <distributed-cache name="authenticationSessions" owners="2">
                 <encoding>
                     <key media-type="application/x-protostream"/>
                     <value media-type="application/x-protostream"/>
                 </encoding>
-                <indexing enabled="false"/>
                 <expiration lifespan="-1"/>
             </distributed-cache>
             <distributed-cache name="offlineSessions" owners="1">
@@ -31,7 +30,7 @@ data:
                     <value media-type="application/x-protostream"/>
                 </encoding>
                 <expiration lifespan="-1"/>
-                <memory max-count="10000"/>
+                <memory max-count="10000" when-full="REMOVE"/>
             </distributed-cache>
             <distributed-cache name="clientSessions" owners="1">
                 <encoding>
@@ -39,7 +38,7 @@ data:
                     <value media-type="application/x-protostream"/>
                 </encoding>
                 <expiration lifespan="-1"/>
-                <memory max-count="10000"/>
+                <memory max-count="10000" when-full="REMOVE"/>
             </distributed-cache>
             <distributed-cache name="offlineClientSessions" owners="1">
                 <encoding>
@@ -47,14 +46,13 @@ data:
                     <value media-type="application/x-protostream"/>
                 </encoding>
                 <expiration lifespan="-1"/>
-                <memory max-count="10000"/>
+                <memory max-count="10000" when-full="REMOVE"/>
             </distributed-cache>
             <distributed-cache name="loginFailures" owners="2">
                 <encoding>
                     <key media-type="application/x-protostream"/>
                     <value media-type="application/x-protostream"/>
                 </encoding>
-                <indexing enabled="false"/>
                 <expiration lifespan="-1"/>
             </distributed-cache>
             <distributed-cache name="actionTokens" owners="2">
