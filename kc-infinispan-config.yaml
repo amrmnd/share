@@ -64,6 +64,10 @@ data:
                 <memory max-count="-1"/>
             </distributed-cache>
             <replicated-cache name="work">
+                <encoding>
+                    <key media-type="application/x-protostream"/>
+                    <value media-type="application/x-protostream"/>
+                </encoding>
                 <expiration lifespan="-1"/>
             </replicated-cache>
         </cache-container>
