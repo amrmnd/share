@@ -1,0 +1,77 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  annotations:
+    kubevirt.io/latest-observed-api-version: v1
+    kubevirt.io/storage-observed-api-version: v1
+  creationTimestamp: "2025-10-14T04:39:05Z"
+  finalizers:
+  - kubevirt.io/virtualMachineControllerFinalize
+  generation: 22
+  labels:
+    fw.kubevirt-manager.io/vm-name: hunesion-1
+    kubevirt-manager.io/managed: "true"
+    kubevirt.io/domain: hunesion-1
+  name: hunesion-1
+  namespace: kubevirt
+  resourceVersion: "388475662"
+  uid: 7b66345d-66fe-4f75-88d7-4842ee7db2ec
+spec:
+  instancetype:
+    kind: VirtualMachineClusterInstancetype
+    name: c8m16
+  running: false
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        fw.kubevirt-manager.io/vm-name: hunesion-1
+        kubevirt-manager.io/managed: "true"
+        kubevirt.io/domain: hunesion-1
+    spec:
+      architecture: amd64
+      domain:
+        devices:
+          disks:
+          - disk: {}
+            name: disk1
+          - disk:
+              bus: virtio
+            name: disk3
+          interfaces:
+          - bridge: {}
+            name: net1
+          networkInterfaceMultiqueue: true
+        firmware:
+          bootloader:
+            bios: {}
+          uuid: bf1c3f9b-902d-4954-ab8c-c1de1b3d962f
+        machine:
+          type: q35
+        resources: {}
+      networks:
+      - name: net1
+        pod: {}
+      priorityClassName: vm-standard
+      volumes:
+      - dataVolume:
+          name: kubevirt-hunesion-1-disk1
+        name: disk1
+      - cloudInitNoCloud:
+          networkData: |
+            version: 1
+            config:
+                - type: physical
+                  name: enp1s0
+                  subnets:
+                  - type: dhcp
+                - type: nameserver
+                  address:
+                  - '8.8.8.8'
+                  - '8.8.4.4'
+          userData: |
+            #cloud-config
+            manage_etc_hosts: true
+            hostname: hunesion-1
+            ssh_pwauth: true
+        name: disk3
