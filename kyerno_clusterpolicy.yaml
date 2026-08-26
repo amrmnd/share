@@ -1,0 +1,48 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: annotate-pvc-on-schedule-failed
+spec:
+  rules:
+    - name: add-ttl-to-pvc-on-failed-scheduling
+      # 1. Listen for scheduling failure events on Pods
+      match:
+        any:
+          - resources:
+              kinds:
+                - Event
+      preconditions:
+        all:
+          - key: "{{ request.object.reason }}"
+            operator: Equals
+            value: FailedScheduling
+          - key: "{{ request.object.involvedObject.kind }}"
+            operator: Equals
+            value: Pod
+      
+      # 2. Extract Pod info and lookup its bound PVC name
+      context:
+        - name: podNamespace
+          variable:
+            jmesPath: "request.object.involvedObject.namespace"
+        - name: podName
+          variable:
+            jmesPath: "request.object.involvedObject.name"
+        # Fetch the failing Pod spec to get the PVC name dynamically
+        - name: targetPvcName
+          apiCall:
+            urlPath: "/api/v1/namespaces/{{ podNamespace }}/pods/{{ podName }}"
+            jmesPath: "spec.volumes[?persistentVolumeClaim].persistentVolumeClaim.claimName | [0]"
+
+      # 3. Target the PVC (not the Event) for mutation
+      mutate:
+        targets:
+          - apiVersion: v1
+            kind: PersistentVolumeClaim
+            namespace: "{{ podNamespace }}"
+            name: "{{ targetPvcName }}"
+        patchStrategicMerge:
+          metadata:
+            annotations:
+              # Kyverno cleanup controller will delete this PVC after 1 hour
+              cleanup.kyverno.io/ttl: "1h"
