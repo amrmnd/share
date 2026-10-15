@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deepseek-r1
+  namespace: serving
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      endpoint: deepseek-r1
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  template:
+    metadata:
+      labels:
+        endpoint: deepseek-r1
+    spec:
+      nodeSelector:
+        nvidia.com/gpu.product: NVIDIA-H200
+      initContainers:
+      - name: download-model
+        image: amazon/aws-cli
+        args:
+        - s3
+        - sync
+        - s3://aladin-model/base/DeepSeek-R1-0528
+        - /model-storage/base/DeepSeek-R1-0528
+        - --no-progress 
+        env:
+        - name: AWS_ENDPOINT_URL
+          valueFrom:
+            secretKeyRef:
+              name: model-storage-credentials
+              key: aws_endpoint_url
+        - name: AWS_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: model-storage-credentials
+              key: aws_access_key_id
+        - name: AWS_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: model-storage-credentials
+              key: aws_secret_access_key
+        volumeMounts:
+        - name: model-storage
+          mountPath: /model-storage
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:v0.8.4
+        args:
+        - --model
+        - /model-storage/base/DeepSeek-R1-0528
+        - --served-model-name
+        - deepseek-r1
+        - --gpu-memory-utilization=0.95
+        - --port=8000
+        - --host=0.0.0.0
+        - --tensor-parallel-size=8
+        - --enable-reasoning
+        - --reasoning-parser=deepseek_r1
+        - --enable-chunked-prefill
+        command:
+        - python3
+        - -m
+        - vllm.entrypoints.openai.api_server
+        ports:
+        - name: vllm
+          containerPort: 8000
+        env:
+        - name: TZ
+          value: Asia/Seoul
+        - name: OMP_NUM_THREADS
+          value: "32"
+        - name: VLLM_USE_V1
+          value: "1"
+        - name: VLLM_LOGGING_LEVEL
+          value: DEBUG
+        resources:
+          limits:
+            nvidia.com/gpu: 8
+        volumeMounts:
+        - name: model-storage
+          mountPath: /model-storage
+        - name: shm
+          mountPath: /dev/shm
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: vllm
+          initialDelaySeconds: 15
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: vllm
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        startupProbe:
+          httpGet:
+            path: /health
+            port: vllm
+          periodSeconds: 5
+          failureThreshold: 72
+          initialDelaySeconds: 1140
+        lifecycle:
+          preStop:
+            exec:
+              command:
+              - /bin/sh
+              - -c
+              - sleep 15
+      volumes:
+      - name: model-storage  
+        persistentVolumeClaim:
+          claimName: models-hdd # SSD PVC 사용시 models-ssd 로 변경
+      - name: shm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 64Gi
