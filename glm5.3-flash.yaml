@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: glm-5-3-flash
+  namespace: default
+  labels:
+    app: glm-5-3-flash
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: glm-5-3-flash
+  template:
+    metadata:
+      labels:
+        app: glm-5-3-flash
+    spec:
+      containers:
+      - name: vllm-server
+        image: vllm/vllm-openai:v0.31.0
+        imagePullPolicy: IfNotPresent
+        command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+        args:
+        - "--model=zai-org/GLM-5.3-Flash"
+        - "--tensor-parallel-size=4"      # Adjust depending on GPU setup (e.g., 2, 4, or 8)
+        - "--kv-cache-dtype=fp8"          # FP8 or BF16 depending on available VRAM
+        - "--tool-call-parser=glm47"
+        - "--reasoning-parser=glm47"
+        - "--trust-remote-code"
+        - "--max-model-len=131072"        # Set context window according to KV-cache budget
+        - "--gpu-memory-utilization=0.92"
+        env:
+        - name: HUGGING_FACE_HUB_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token-secret
+              key: token
+        - name: VLLM_ATTENTION_BACKEND
+          value: "FLASHINFER"             # Recommended backend for GLM sparse MLA layers
+        ports:
+        - containerPort: 8000
+          name: http
+        resources:
+          limits:
+            nvidia.com/gpu: "4"           # Must match --tensor-parallel-size
+            memory: "128Gi"
+            cpu: "16"
+          requests:
+            nvidia.com/gpu: "4"
+            memory: "64Gi"
+            cpu: "8"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 120
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 120
+          periodSeconds: 15
+        volumeMounts:
+        - mountPath: /root/.cache/huggingface
+          name: hf-cache
+        - mountPath: /dev/shm
+          name: dshm
+      volumes:
+      - name: hf-cache
+        persistentVolumeClaim:
+          claimName: hf-cache-pvc
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: 16Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: glm-5-3-flash-svc
+  namespace: default
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http
+  selector:
+    app: glm-5-3-flash
