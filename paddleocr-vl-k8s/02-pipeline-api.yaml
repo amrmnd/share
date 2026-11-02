@@ -1,0 +1,263 @@
+# PaddleOCR-VL 파이프라인 API — 공식 이미지 + 기존 vLLM 서버 재사용
+#
+#  클라이언트 ──POST /layout-parsing──▶ Service: paddleocr-api ──▶ 공식 paddleocr-vl 이미지 Pod × N
+#                                                                  └──HTTP /v1──▶ vllm-paddleocr-vl (01-vllm-paddleocr-vl.yaml)
+#
+# 동작 방식
+#   1) initContainer: 같은 공식 이미지에서 기본 파이프라인 설정을 생성
+#      (paddlex --get_pipeline_config PaddleOCR-VL) → VLRecognition 백엔드만 vLLM 서버로 패치
+#      → 설정이 항상 이미지 버전과 일치 (키를 손으로 추측하지 않음)
+#   2) main: paddlex --serve --pipeline <패치된 설정>
+#   패치 결과는 initContainer 로그에 전체 출력됨:
+#     kubectl -n paddleocr logs deploy/paddleocr-api -c gen-config
+#
+# 요청 예:
+#   curl -s http://<host>/layout-parsing -H 'Content-Type: application/json' \
+#     -d '{"file":"https://.../doc.png","fileType":1}'
+#   (fileType: 0=PDF, 1=이미지 / file: URL 또는 Base64)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: paddleocr-vl-api-config
+  namespace: paddleocr
+data:
+  # vLLM 서버 (01-vllm-paddleocr-vl.yaml)
+  VLLM_SERVER_URL: "http://vllm-paddleocr-vl.paddleocr.svc.cluster.local:8000/v1"
+  # 파이프라인이 vLLM에 요청할 모델 이름. 01-vllm-paddleocr-vl.yaml 의 --served-model-name 값 중 하나여야 함.
+  # 비워두면 이미지 기본값 사용 (기본값이 PaddleOCR-VL-0.9B 가 아니면 "model does not exist" 오류)
+  VLM_API_MODEL_NAME: "PaddleOCR-VL-0.9B"
+  # Pod 하나가 vLLM에 동시에 보내는 영역(crop) 요청 수
+  VLM_MAX_CONCURRENCY: "8"
+  # 레이아웃 모델 이름 (PaddleX가 이름으로 로드; offline 이미지는 내장본 사용). 비우면 이미지 기본값
+  LAYOUT_MODEL_NAME: "PP-DocLayoutV2"
+  # 직접 받은 가중치를 쓸 때만 경로 지정 (볼륨 마운트 필요). 기본은 비움
+  LAYOUT_MODEL_DIR: ""
+
+  patch_config.py: |
+    """기본 파이프라인 설정을 생성된 그대로 두고, 필요한 부분만 덮어쓴다."""
+    import glob, os, sys, yaml
+
+    files = glob.glob("/config/*.yaml") + glob.glob("/config/*.yml")
+    if len(files) != 1:
+        sys.exit(f"expected exactly one generated config in /config, found: {files}")
+    src = files[0]
+    cfg = yaml.safe_load(open(src))
+
+    def find(node, key):
+        """설정 트리에서 key 이름의 dict를 재귀적으로 찾는다."""
+        if isinstance(node, dict):
+            for k, v in node.items():
+                if k == key and isinstance(v, dict):
+                    return v
+                hit = find(v, key)
+                if hit is not None:
+                    return hit
+        elif isinstance(node, list):
+            for v in node:
+                hit = find(v, key)
+                if hit is not None:
+                    return hit
+        return None
+
+    vl = find(cfg, "VLRecognition")
+    if vl is None:
+        sys.exit("VLRecognition section not found in generated config; inspect it and adjust this script")
+    gc = vl.setdefault("genai_config", {})
+    gc["backend"] = "vllm-server"
+    gc["server_url"] = os.environ["VLLM_SERVER_URL"]
+    if os.environ.get("VLM_MAX_CONCURRENCY"):
+        gc["max_concurrency"] = int(os.environ["VLM_MAX_CONCURRENCY"])
+    if os.environ.get("VLM_API_MODEL_NAME"):
+        gc["api_model_name"] = os.environ["VLM_API_MODEL_NAME"]
+
+    name, mdir = os.environ.get("LAYOUT_MODEL_NAME"), os.environ.get("LAYOUT_MODEL_DIR")
+    if name or mdir:
+        lay = find(cfg, "LayoutDetection")
+        if lay is None:
+            sys.exit("LayoutDetection section not found in generated config")
+        if name:
+            lay["model_name"] = name
+        if mdir:
+            if not os.path.isdir(mdir):
+                sys.exit(f"layout model dir missing: {mdir}")
+            lay["model_dir"] = mdir
+
+    out = "/config/PaddleOCR-VL.yaml"
+    if os.path.abspath(src) != out:
+        os.remove(src)
+    yaml.safe_dump(cfg, open(out, "w"), sort_keys=False, allow_unicode=True)
+    print("===== patched pipeline config =====")
+    print(open(out).read())
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paddleocr-api
+  namespace: paddleocr
+  labels:
+    app: paddleocr-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: paddleocr-api
+  template:
+    metadata:
+      labels:
+        app: paddleocr-api
+    spec:
+      terminationGracePeriodSeconds: 120
+      initContainers:
+        - name: gen-config
+          image: &image ccr-2vdh3abv-pub.cnc.bj.baidubce.com/paddlepaddle/paddleocr-vl:paddleocr3.3-nvidia-gpu-offline  # ← 사내 레지스트리 미러 + 버전 고정 권장
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              paddlex --get_pipeline_config PaddleOCR-VL --save_path /config
+              python /scripts/patch_config.py
+          envFrom:
+            - configMapRef:
+                name: paddleocr-vl-api-config
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: scripts
+              mountPath: /scripts
+      containers:
+        - name: api
+          image: *image
+          command: ["paddlex", "--serve", "--pipeline", "/config/PaddleOCR-VL.yaml",
+                    "--host", "0.0.0.0", "--port", "8080"]
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: paddleocr-vl-api-config
+          env:
+            - name: PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK
+              value: "True"
+          resources:
+            requests:
+              cpu: "2"
+              memory: 8Gi
+              nvidia.com/gpu: 1          # 레이아웃 모델용 (공식 compose도 GPU 1개 할당)
+            limits:
+              memory: 16Gi
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: dshm
+              mountPath: /dev/shm
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 5
+            failureThreshold: 60         # 최대 5분 (파이프라인 로딩)
+          readinessProbe:                # API와 vLLM이 모두 정상일 때만 트래픽 수신
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - >-
+                  curl -fsS -m 3 http://localhost:8080/health >/dev/null &&
+                  curl -fsS -m 3 "${VLLM_SERVER_URL%/v1}/health" >/dev/null
+            periodSeconds: 10
+            timeoutSeconds: 8
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            periodSeconds: 30
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "10"]
+      volumes:
+        - name: config
+          emptyDir: {}
+        - name: scripts
+          configMap:
+            name: paddleocr-vl-api-config
+            items:
+              - key: patch_config.py
+                path: patch_config.py
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 8Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: paddleocr-api
+  namespace: paddleocr
+spec:
+  selector:
+    app: paddleocr-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: paddleocr-api
+  namespace: paddleocr
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: paddleocr-api
+---
+# 공식 표준 서빙은 Pod당 요청을 한 번에 하나씩 처리 → 동시 요청은 Pod 수로 소화
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: paddleocr-api
+  namespace: paddleocr
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: paddleocr-api
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: paddleocr-api
+  namespace: paddleocr
+  annotations:
+    # 파일을 Base64 JSON으로 보내면 원본보다 약 33% 커짐
+    nginx.ingress.kubernetes.io/proxy-body-size: "70m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: ocr.example.com          # ← 실제 도메인
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: paddleocr-api
+                port:
+                  number: 80

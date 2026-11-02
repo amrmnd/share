@@ -1,0 +1,115 @@
+# PaddleOCR-VL-0.9B를 서빙하는 vLLM 서버 (OpenAI 호환 API, 포트 8000)
+# 문서의 다음 명령을 그대로 옮긴 것:
+#   vllm serve PaddlePaddle/PaddleOCR-VL --trust-remote-code \
+#     --max-num-batched-tokens 16384 --no-enable-prefix-caching --mm-processor-cache-gb 0
+# + 문서 Tip: "The model PaddleOCR-VL-0.9B does not exist." 오류 방지를 위해
+#   --served-model-name 에 PaddleOCR-VL-0.9B 를 추가 (원래 이름도 같이 등록)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: paddleocr
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-paddleocr-vl
+  namespace: paddleocr
+  labels:
+    app: vllm-paddleocr-vl
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-paddleocr-vl
+  template:
+    metadata:
+      labels:
+        app: vllm-paddleocr-vl
+    spec:
+      containers:
+        - name: vllm
+          # PaddleOCR-VL 지원은 vLLM v0.11.1 이상 필요. 운영에서는 latest 대신 버전 고정 권장
+          image: vllm/vllm-openai:v0.11.1
+          args:
+            - PaddlePaddle/PaddleOCR-VL
+            - --served-model-name
+            - PaddleOCR-VL-0.9B
+            - PaddlePaddle/PaddleOCR-VL
+            - --trust-remote-code
+            - --host=0.0.0.0
+            - --port=8000
+            - --max-num-batched-tokens=16384   # GPU 성능에 맞게 조정 (처리량 튜닝 포인트)
+            - --no-enable-prefix-caching       # OCR은 prefix 캐시 이득이 거의 없음
+            - --mm-processor-cache-gb=0        # 이미지 재사용 캐시 끔
+            - --gpu-memory-utilization=0.85
+          env:
+            - name: HF_HOME
+              value: /hf-cache
+            - name: HF_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hf-token
+                  key: token
+                  optional: true
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            requests:
+              cpu: "4"
+              memory: 16Gi
+              nvidia.com/gpu: 1
+            limits:
+              memory: 32Gi
+              nvidia.com/gpu: 1
+          volumeMounts:
+            - name: hf-cache
+              mountPath: /hf-cache
+            - name: dshm
+              mountPath: /dev/shm
+          startupProbe:                  # 최초 기동 시 모델 다운로드 시간 고려
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 10
+            failureThreshold: 90         # 최대 15분
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 30
+            failureThreshold: 3
+      volumes:
+        - name: hf-cache                 # 모델 캐시. Pod 재시작 시 다시 다운로드됨 (영구 보관하려면 PVC로 교체)
+          emptyDir:
+            sizeLimit: 20Gi
+        - name: dshm                     # vLLM은 공유메모리를 많이 씀
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Gi
+      # GPU 노드 지정이 필요하면:
+      # nodeSelector:
+      #   nvidia.com/gpu.product: NVIDIA-L4
+      # tolerations:
+      #   - key: nvidia.com/gpu
+      #     operator: Exists
+      #     effect: NoSchedule
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-paddleocr-vl
+  namespace: paddleocr
+spec:
+  selector:
+    app: vllm-paddleocr-vl
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+# 클러스터 내부 주소: http://vllm-paddleocr-vl.paddleocr.svc.cluster.local:8000/v1
