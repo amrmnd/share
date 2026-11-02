@@ -2,16 +2,8 @@
 
 PaddleOCR-VL-0.9B를 vLLM으로 서빙하고, PaddleOCR 공식 `paddleocr-vl` 이미지로 문서 파싱 API를 띄우는 구성입니다.
 
-```
-클라이언트 ──POST /layout-parsing──▶ Ingress / Service: paddleocr-api
-                                        │
-                                        ▼
-                       paddleocr-api Pod × N (공식 paddleocr-vl 이미지)
-                         1) PP-DocLayoutV2 레이아웃 검출 + 읽기 순서
-                         2) 영역별 crop ──HTTP /v1──▶ Service: vllm-paddleocr-vl
-                                                         vLLM (PaddleOCR-VL-0.9B, GPU)
-                         3) 페이지별 Markdown / JSON 조립 후 응답
-```
+<img width="693" height="640" alt="image" src="https://github.com/user-attachments/assets/8c195f81-3a4c-4db0-a5fc-88f4482f39b2" />
+
 
 ## 파일 구성
 
