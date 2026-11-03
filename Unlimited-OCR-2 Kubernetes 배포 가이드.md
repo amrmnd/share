@@ -64,7 +64,7 @@ ARG CUDA_IMAGE=nvidia/cuda:13.0.0-cudnn-devel-ubuntu22.04
 FROM ${CUDA_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive \
-    PYTHONUNBUFFERED=1 \dl;ㅋs>            
+    PYTHONUNBUFFERED=1 \            
     UV_LINK_MODE=copy \
     VIRTUAL_ENV=/opt/venv \
     PATH=/opt/venv/bin:$PATH
