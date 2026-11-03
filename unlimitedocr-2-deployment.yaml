@@ -1,0 +1,79 @@
+# 04-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uocr2
+  namespace: uocr
+  labels: {app: uocr2}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate            # GPU 1장 노드에서 롤링 시 신규 Pod Pending 방지
+  selector:
+    matchLabels: {app: uocr2}
+  template:
+    metadata:
+      labels: {app: uocr2}
+    spec:
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      tolerations:
+        - {key: nvidia.com/gpu, operator: Exists, effect: NoSchedule}
+      terminationGracePeriodSeconds: 120
+      containers:
+        - name: sglang
+          image: registry.example.com/ai/unlimited-ocr2-sglang:0.5.20-uocr2
+          args:
+            - --model-path=/models/Unlimited-OCR-2
+            - --served-model-name=Unlimited-OCR-2
+            - --chat-template=unlimited-ocr
+            - --tokenizer-backend=fastokens
+            - --tokenizer-worker-num=8
+            - --mem-fraction-static=0.7
+            - --max-running-requests=64
+            - --max-prefill-tokens=2048
+            - --enable-custom-logit-processor
+            - --enable-streaming-session
+            - --allow-auto-truncate
+            - --disable-radix-cache
+            - --mm-preprocess-cache-size-mb=0
+            - --cuda-graph-backend-decode=full
+            - --cuda-graph-max-bs-decode=64
+            - --cuda-graph-backend-prefill=full
+            - --cuda-graph-max-bs-prefill=16384
+            - --cuda-graph-bs-prefill
+            - "1024"
+            - "2048"
+            - '--cuda-graph-config={"prefill": {"backend": "full", "full_prefill_max_req": 64}}'
+            - --enable-metrics
+            - --host=0.0.0.0
+            - --port=10000
+          envFrom:
+            - configMapRef: {name: uocr2-env}
+          env:
+            - {name: HF_HUB_OFFLINE, value: "1"}   # PVC 가중치만 사용
+          ports:
+            - {name: http, containerPort: 10000}
+          resources:
+            requests: {cpu: "8", memory: 48Gi, nvidia.com/gpu: "1"}
+            limits:   {cpu: "16", memory: 64Gi, nvidia.com/gpu: "1"}
+          startupProbe:           # 가중치 로드 + CUDA graph 캡처에 수 분 소요
+            httpGet: {path: /health, port: http}
+            periodSeconds: 20
+            failureThreshold: 60  # 최대 20분 대기
+          readinessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: /health, port: http}
+            periodSeconds: 30
+            failureThreshold: 5
+          volumeMounts:
+            - {name: models, mountPath: /models, readOnly: true}
+            - {name: dshm, mountPath: /dev/shm}
+      volumes:
+        - name: models
+          persistentVolumeClaim: {claimName: uocr2-models, readOnly: true}
+        - name: dshm
+          emptyDir: {medium: Memory, sizeLimit: 32Gi}
