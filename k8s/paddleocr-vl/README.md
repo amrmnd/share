@@ -4,13 +4,24 @@ PaddleOCR-VL-0.9B를 vLLM으로 서빙하고, PaddleOCR 공식 `paddleocr-vl` �
 
 <img width="693" height="640" alt="image" src="https://github.com/user-attachments/assets/8c195f81-3a4c-4db0-a5fc-88f4482f39b2" />
 
+```
+클라이언트 ──POST /layout-parsing──▶ Ingress / Service: paddleocr-api
+                                        │
+                                        ▼
+                       paddleocr-api Pod × N (공식 paddleocr-vl 이미지)
+                         1) PP-DocLayoutV2 레이아웃 검출 + 읽기 순서
+                         2) 영역별 crop ──HTTP /v1──▶ Service: vllm-paddleocr-vl
+                                                         vLLM (PaddleOCR-VL-0.9B, GPU)
+                         3) 페이지별 Markdown / JSON 조립 후 응답
+```
+
 
 ## 파일 구성
 
 | 파일 | 리소스 | 역할 |
 |---|---|---|
-| `k8s/01-vllm-paddleocr-vl.yaml` | Namespace, Deployment, Service | `paddleocr` 네임스페이스 생성, vLLM으로 VLM 서빙 (OpenAI 호환 API, 포트 8000) |
-| `k8s/02-pipeline-api.yaml` | ConfigMap, Deployment, Service, PDB, HPA, Ingress | 공식 이미지로 파이프라인 API 실행, VL 인식은 01번의 vLLM으로 위임 |
+| `01-vllm-paddleocr-vl.yaml` | Namespace, Deployment, Service | `paddleocr` 네임스페이스 생성, vLLM으로 VLM 서빙 (OpenAI 호환 API, 포트 8000) |
+| `02-pipeline-api.yaml` | ConfigMap, Deployment, Service, PDB, HPA, Ingress | 공식 이미지로 파이프라인 API 실행, VL 인식은 01번의 vLLM으로 위임 |
 
 ### 01-vllm-paddleocr-vl.yaml
 
@@ -96,7 +107,7 @@ kubectl -n paddleocr create secret generic hf-token --from-literal=token=hf_xxx
 ### 2. vLLM 배포
 
 ```bash
-kubectl apply -f k8s/01-vllm-paddleocr-vl.yaml
+kubectl apply -f 01-vllm-paddleocr-vl.yaml
 kubectl -n paddleocr rollout status deploy/vllm-paddleocr-vl --timeout=20m
 ```
 
@@ -111,7 +122,7 @@ curl -s localhost:8000/v1/models | jq '.data[].id'
 ### 3. 파이프라인 API 배포
 
 ```bash
-kubectl apply -f k8s/02-pipeline-api.yaml
+kubectl apply -f 02-pipeline-api.yaml
 kubectl -n paddleocr rollout status deploy/paddleocr-api --timeout=15m
 ```
 
@@ -170,6 +181,6 @@ jq -n --arg f "$(base64 -w0 sample.pdf)" '{file:$f, fileType:0}' \
 ## 삭제
 
 ```bash
-kubectl delete -f k8s/02-pipeline-api.yaml
-kubectl delete -f k8s/01-vllm-paddleocr-vl.yaml   # 네임스페이스까지 삭제됨
+kubectl delete -f 02-pipeline-api.yaml
+kubectl delete -f 01-vllm-paddleocr-vl.yaml   # 네임스페이스까지 삭제됨
 ```
