@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 596" width="760" height="596" role="img" aria-label="평소엔 Site A만 서비스하고 Site B는 복제를 받으며 대기한다" font-size="13" font-family="-apple-system, 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif">
+  <defs>
+    <marker id="arch-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#8a8f98"/>
+    </marker>
+  </defs>
+  <rect x="0" y="0" width="760" height="596" fill="#ffffff"/>
+  <text x="24" y="30" font-size="15" font-weight="600" fill="#1f2328">평소엔 Site A만 서비스하고 Site B는 복제를 받으며 대기한다</text>
+
+  <!-- DNS -->
+  <rect x="91" y="48" width="400" height="40" rx="8" fill="none" stroke="#8a8f98" stroke-width="1.25"/>
+  <text x="291" y="72" text-anchor="middle" fill="#1f2328">DNS: 평소 Site A → 장애 시 Site B로 수동 전환</text>
+
+  <!-- Site frames -->
+  <rect x="24" y="124" width="712" height="128" rx="8" fill="none" stroke="#2f6fde" stroke-width="2"/>
+  <text x="40" y="148" font-weight="600" fill="#1f2328">Site A — Active (서비스 중)</text>
+  <rect x="24" y="348" width="712" height="128" rx="8" fill="none" stroke="#8a8f98" stroke-width="1.25" stroke-dasharray="6 4"/>
+  <text x="160" y="372" font-weight="600" fill="#1f2328">Site B — Standby (승격 대기)</text>
+
+  <!-- Site A boxes -->
+  <g fill="none" stroke="#8a8f98" stroke-width="1.25">
+    <rect x="40" y="164" width="146" height="72" rx="8"/>
+    <rect x="218" y="164" width="146" height="72" rx="8"/>
+    <rect x="396" y="164" width="146" height="72" rx="8"/>
+    <rect x="574" y="164" width="146" height="72" rx="8"/>
+    <rect x="40" y="388" width="146" height="72" rx="8"/>
+    <rect x="218" y="388" width="146" height="72" rx="8"/>
+    <rect x="396" y="388" width="146" height="72" rx="8"/>
+    <rect x="574" y="388" width="146" height="72" rx="8"/>
+  </g>
+
+  <g text-anchor="middle">
+    <text x="113" y="188" font-weight="600" fill="#1f2328">Infinispan ×3</text>
+    <text x="113" y="206" font-size="11.5" fill="#59636e">세션·토큰 캐시</text>
+    <text x="113" y="222" font-size="11.5" fill="#59636e">remote cache</text>
+
+    <text x="291" y="188" font-weight="600" fill="#1f2328">Keycloak ×3</text>
+    <text x="291" y="206" font-size="11.5" fill="#59636e">Ingress</text>
+    <text x="291" y="222" font-size="11.5" fill="#59636e">sso.example.com</text>
+
+    <text x="469" y="188" font-weight="600" fill="#1f2328">PgBouncer ×2</text>
+    <text x="469" y="206" font-size="11.5" fill="#59636e">CNPG Pooler</text>
+    <text x="469" y="222" font-size="11.5" fill="#59636e">rw · session 모드</text>
+
+    <text x="647" y="188" font-weight="600" fill="#1f2328">CNPG ×3</text>
+    <text x="647" y="206" font-size="11.5" fill="#59636e">Primary</text>
+    <text x="647" y="222" font-size="11.5" fill="#59636e">사이트 내 동기 복제</text>
+
+    <text x="113" y="412" font-weight="600" fill="#1f2328">Infinispan ×3</text>
+    <text x="113" y="430" font-size="11.5" fill="#59636e">세션·토큰 캐시</text>
+    <text x="113" y="446" font-size="11.5" fill="#59636e">Site A 백업 수신</text>
+
+    <text x="291" y="412" font-weight="600" fill="#1f2328">Keycloak ×0</text>
+    <text x="291" y="430" font-size="11.5" fill="#59636e">평소 0개</text>
+    <text x="291" y="446" font-size="11.5" fill="#59636e">전환 시 3개로 기동</text>
+
+    <text x="469" y="412" font-weight="600" fill="#1f2328">PgBouncer ×2</text>
+    <text x="469" y="430" font-size="11.5" fill="#59636e">CNPG Pooler</text>
+    <text x="469" y="446" font-size="11.5" fill="#59636e">rw · session 모드</text>
+
+    <text x="647" y="412" font-weight="600" fill="#1f2328">CNPG ×3</text>
+    <text x="647" y="430" font-size="11.5" fill="#59636e">Replica Cluster</text>
+    <text x="647" y="446" font-size="11.5" fill="#59636e">읽기 전용, 승격 대기</text>
+  </g>
+
+  <!-- Object storage -->
+  <rect x="396" y="516" width="324" height="56" rx="8" fill="#f2f4f7" stroke="#8a8f98" stroke-width="1.25"/>
+  <text x="558" y="540" text-anchor="middle" font-weight="600" fill="#1f2328">객체 스토리지</text>
+  <text x="558" y="556" text-anchor="middle" font-size="11.5" fill="#59636e">양 사이트 백업 · WAL 아카이브</text>
+
+  <!-- Site A connectors -->
+  <g fill="none" stroke="#8a8f98" stroke-width="1.25">
+    <path d="M291 88V164" marker-end="url(#arch-arrow)"/>
+    <path d="M218 200H186" marker-end="url(#arch-arrow)"/>
+    <path d="M364 200H396" marker-end="url(#arch-arrow)"/>
+    <path d="M542 200H574" marker-end="url(#arch-arrow)"/>
+    <path d="M720 200H748V544H720" marker-end="url(#arch-arrow)"/>
+  </g>
+  <!-- Site B connectors (after promotion) -->
+  <g fill="none" stroke="#8a8f98" stroke-width="1.25" stroke-dasharray="4 4">
+    <path d="M218 424H186" marker-end="url(#arch-arrow)"/>
+    <path d="M364 424H396" marker-end="url(#arch-arrow)"/>
+    <path d="M542 424H574" marker-end="url(#arch-arrow)"/>
+  </g>
+  <g fill="none" stroke="#8a8f98" stroke-width="1.25">
+    <path d="M647 460V516" marker-end="url(#arch-arrow)"/>
+    <path d="M113 236V388" marker-start="url(#arch-arrow)" marker-end="url(#arch-arrow)"/>
+    <path d="M647 236V388" marker-end="url(#arch-arrow)"/>
+  </g>
+
+  <text x="125" y="296" font-size="11.5" fill="#1f2328">cross-site 백업 (SYNC)</text>
+  <text x="125" y="312" font-size="11.5" fill="#59636e">Gossip Router · LoadBalancer</text>
+  <text x="635" y="296" text-anchor="end" font-size="11.5" fill="#1f2328">스트리밍 복제 (비동기)</text>
+  <text x="635" y="312" text-anchor="end" font-size="11.5" fill="#59636e">LoadBalancer · TLS</text>
+</svg>

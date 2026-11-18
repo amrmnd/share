@@ -29,7 +29,9 @@
 
 두 사이트에 Keycloak, Infinispan, PgBouncer, CNPG를 같은 구성으로 두고, 사이트 간에는 DB 복제와 Infinispan cross-site 두 경로만 연결합니다.
 
-> [다이어그램: 목표 아키텍처 · 2사이트 Active-Passive — 원본 문서 참고]
+![목표 아키텍처 · 2사이트 Active-Passive](images/keycloak-multisite-architecture.svg)
+
+*목표 아키텍처 · 2사이트 Active-Passive*
 
 Keycloak은 같은 사이트의 Pooler와 Infinispan만 바라봅니다. 사이트 간 통신은 두 경로뿐이고 둘 다 LoadBalancer를 지납니다. Site B의 점선 연결은 승격 후에만 쓰입니다.
 
